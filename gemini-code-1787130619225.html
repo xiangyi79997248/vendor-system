@@ -216,7 +216,6 @@
                   <input type="text" id="c1Mobile" placeholder="手機" class="border rounded px-3 py-2 text-sm bg-white">
                   <input type="text" id="c1LineName" placeholder="Line 名稱" class="border rounded px-3 py-2 text-sm bg-white">
                 </div>
-                <!-- 第二排嚴格按照指示：電話 ➡️ 分機 ➡️ 傳真 ➡️ 負責項目 (4欄並排) -->
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
                   <input type="text" id="c1Tel" placeholder="電話" class="border rounded px-3 py-2 text-sm bg-white">
                   <input type="text" id="c1Ext" placeholder="分機" class="border rounded px-3 py-2 text-sm bg-white">
@@ -513,7 +512,8 @@
   </div>
 
   <script>
-    const CLOUD_API_URL = "https://script.google.com/macros/s/AKfycbwHCagw8F7JUK8cplnFfW9PoGEkrxmk7lCXYqaoUDaygjQdMqwBnjT_Q6aVfmT28_E1/exec";
+    // 您的雲端 API 網址 (已直接內建寫入)
+    const CLOUD_API_URL = "https://script.google.com/macros/s/AKfycbwXxXu6NHVfQntAJKJaHswCExUCRYYITArdVaNR5oer5YtdplV2l85NM6Q9_uAvJBnn/exec";
 
     let vendors = JSON.parse(localStorage.getItem('vendor_system_data')) || [];
     let currentEditId = null;
@@ -566,6 +566,63 @@
     let currentAgencyTab = 'org';
     let currentEditAgencyId = null;
     let currentAgencyCardBase64 = "";
+
+    function updateBadge(status, text) {
+      const badge = document.getElementById('syncStatusBadge');
+      if (!badge) return;
+      if (status === 'syncing') {
+        badge.className = "text-[11px] bg-amber-800 text-amber-100 px-2.5 py-0.5 rounded-full border border-amber-500/50 flex items-center gap-1";
+        badge.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-amber-300 animate-ping"></span> ${text}`;
+      } else if (status === 'online') {
+        badge.className = "text-[11px] bg-emerald-800 text-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-500/50 flex items-center gap-1";
+        badge.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-emerald-300"></span> ${text}`;
+      } else if (status === 'error') {
+        badge.className = "text-[11px] bg-rose-800 text-rose-100 px-2.5 py-0.5 rounded-full border border-rose-500/50 flex items-center gap-1";
+        badge.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-rose-300"></span> ${text}`;
+      }
+    }
+
+    async function fetchCloudData(isManual = false) {
+      updateBadge('syncing', '雲端同步中...');
+      try {
+        const response = await fetch(CLOUD_API_URL + '?t=' + Date.now(), { method: 'GET' });
+        const text = await response.text();
+        if (text && text !== "[]") {
+          const cloudData = JSON.parse(text);
+          if (Array.isArray(cloudData) && cloudData.length > 0) {
+            vendors = cloudData;
+            localStorage.setItem('vendor_system_data', JSON.stringify(vendors));
+            refreshCategoryOptions();
+            refreshCodeOptions();
+            filterVendors();
+            renderSiteQuery();
+            updateBadge('online', '雲端已同步');
+            if (isManual) alert(`同步成功！目前共有 ${vendors.length} 筆廠商資料。`);
+            return;
+          }
+        }
+        syncToCloud();
+        updateBadge('online', '已上傳初始化資料');
+      } catch (err) {
+        updateBadge('error', '離線暫存模式');
+        if (isManual) alert('雲端連線失敗，目前顯示本機暫存資料。');
+      }
+    }
+
+    async function syncToCloud() {
+      updateBadge('syncing', '正在儲存至雲端...');
+      try {
+        await fetch(CLOUD_API_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(vendors)
+        });
+        updateBadge('online', '雲端已儲存');
+      } catch (err) {
+        updateBadge('error', '雲端儲存失敗(已存本機)');
+      }
+    }
 
     // ==========================================
     // 兩大版塊切換
@@ -974,9 +1031,10 @@
         vendors.unshift(vData);
       }
       localStorage.setItem('vendor_system_data', JSON.stringify(vendors));
+      syncToCloud();
       refreshCategoryOptions();
       refreshCodeOptions();
-      alert('廠商資料儲存成功！');
+      alert('廠商資料儲存成功並已同步至雲端！');
       switchMainView('query');
     }
 
@@ -984,6 +1042,7 @@
       if(!currentEditId || !confirm('確定刪除此廠商？')) return;
       vendors = vendors.filter(x => x.id !== currentEditId);
       localStorage.setItem('vendor_system_data', JSON.stringify(vendors));
+      syncToCloud();
       refreshCategoryOptions();
       refreshCodeOptions();
       switchMainView('query');
@@ -1005,6 +1064,7 @@
         try {
           vendors = JSON.parse(evt.target.result);
           localStorage.setItem('vendor_system_data', JSON.stringify(vendors));
+          syncToCloud();
           refreshCategoryOptions();
           refreshCodeOptions();
           filterVendors();
@@ -1012,27 +1072,6 @@
         } catch(err) { alert('格式錯誤'); }
       };
       reader.readAsText(file);
-    }
-
-    async function fetchCloudData(isManual = false) {
-      try {
-        const res = await fetch(CLOUD_API_URL + '?t=' + Date.now());
-        const text = await res.text();
-        if(text && text !== "[]") {
-          const cloudData = JSON.parse(text);
-          if(Array.isArray(cloudData) && cloudData.length > 0) {
-            vendors = cloudData;
-            localStorage.setItem('vendor_system_data', JSON.stringify(vendors));
-            refreshCategoryOptions();
-            refreshCodeOptions();
-            filterVendors();
-            if(isManual) alert('雲端同步成功！');
-            return;
-          }
-        }
-      } catch(err) {
-        if(isManual) alert('目前為本機暫存模式');
-      }
     }
 
 
@@ -1250,7 +1289,7 @@
       
       html += `<div class="mt-4 pt-3 border-t flex justify-between items-center">`;
       html += item.cardImg ? `<button onclick="openLightbox('${item.cardImg}')" class="text-xs text-emerald-600 underline">📇 查看名片</button>` : `<span></span>`;
-      html += `<button onclick="editAgency('${item.id}')" class="bg-slate-800 text-white text-xs px-3 py-1 rounded">✏️ 編輯</button>`;
+      html += `<button onclick="editAgency('${item.id}')" class="bg-slate-800 text-white text-xs px-3 py-1 rounded">✏️ 編輯</button>`
       html += `</div></div>`;
       return html;
     }
@@ -1267,7 +1306,7 @@
     refreshCategoryOptions();
     refreshCodeOptions();
     filterVendors();
-    fetchCloudData();
+    fetchCloudData(); // 自動抓取雲端資料
     switchMajor('vendor');
     switchMainView('query');
   </script>
