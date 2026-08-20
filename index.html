@@ -2,62 +2,238 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>採購廠商及工程聯繫資料</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .tab-btn.active { border-bottom: 3px solid #059669; color: #059669; font-weight: 600; }
+    .agency-tab.active { border-bottom: 3px solid #059669; color: #059669; font-weight: 600; }
+  </style>
 </head>
 <body class="bg-slate-100 min-h-screen text-slate-800">
-  <div class="max-w-5xl mx-auto p-4">
-    <h1 class="text-xl font-bold mb-4">採購廠商系統 <span id="status" class="text-xs text-slate-500">(初始化中...)</span></h1>
-    <div id="vendorList" class="grid gap-4"></div>
-  </div>
+
+  <header class="bg-emerald-700 text-white shadow-md sticky top-0 z-50">
+    <div class="max-w-5xl mx-auto px-4 pt-3">
+      <div class="flex flex-wrap justify-between items-center gap-3 pb-3">
+        <div class="flex items-center gap-2">
+          <span class="text-2xl">📋</span>
+          <h1 class="text-xl font-bold tracking-wide">採購廠商及工程聯繫資料</h1>
+          <span id="syncStatusBadge" class="text-[11px] bg-emerald-800 text-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-500/50 flex items-center gap-1">
+            <span class="inline-block w-2 h-2 rounded-full bg-emerald-300 animate-pulse"></span> 雲端連線中
+          </span>
+        </div>
+      </div>
+      <div class="flex gap-1 overflow-x-auto">
+        <button id="majorVendorBtn" onclick="switchMajor('vendor')" class="px-5 py-2.5 bg-slate-100 text-emerald-800 font-bold rounded-t-lg transition whitespace-nowrap cursor-pointer">🏢 採購廠商聯繫資料</button>
+        <button id="majorAgencyBtn" onclick="switchMajor('agency')" class="px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-emerald-100 font-semibold rounded-t-lg transition whitespace-nowrap cursor-pointer">🏛️ 工程聯繫資料</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto p-4 md:p-6">
+    <div id="majorVendor">
+      <div class="flex flex-wrap items-center gap-2 mb-5">
+        <button id="navQueryBtn" onclick="switchMainView('query')" class="bg-emerald-800 text-white px-3.5 py-2 rounded-lg text-sm font-semibold shadow transition flex items-center gap-1.5 border border-emerald-600"><span>🔍</span> 廠商查詢</button>
+        <button id="navSiteBtn" onclick="switchMainView('site')" class="bg-emerald-600 text-white px-3.5 py-2 rounded-lg text-sm font-semibold shadow transition flex items-center gap-1.5 border border-emerald-400"><span>🏗️</span> 案場廠商查詢</button>
+        <button id="navEditBtn" onclick="prepareCreateNew()" class="bg-emerald-600 text-white px-3.5 py-2 rounded-lg text-sm font-semibold shadow transition flex items-center gap-1.5 border border-emerald-400"><span>➕</span> 建立 / 修改廠商</button>
+      </div>
+
+      <section id="viewQuery" class="space-y-5">
+        <div class="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-200">
+          <h2 class="text-lg font-bold text-slate-800 mb-3"><span>🔍</span> 採購廠商條件查詢</h2>
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div class="md:col-span-2"><input type="text" id="queryKeyword" oninput="filterVendors()" placeholder="輸入關鍵字即時查詢..." class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"></div>
+            <div><select id="queryCategory" onchange="filterVendors()" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white"></select></div>
+            <div><select id="queryStatus" onchange="filterVendors()" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white"><option value="">全部狀態</option><option value="是">配合中</option><option value="否">已停止配合</option></select></div>
+          </div>
+          <div class="flex justify-between items-center mt-4 pt-3 border-t text-xs text-slate-500">
+            <span id="resultCount">共 0 筆資料</span>
+            <div class="flex gap-2">
+              <button onclick="fetchCloudData(true)" class="text-emerald-700 hover:underline font-semibold">🔄 手動重新整理雲端</button>
+              <span>|</span>
+              <button onclick="exportData()" class="hover:text-emerald-700 underline">匯出備份 (JSON)</button>
+              <span>|</span>
+              <label class="hover:text-emerald-700 underline cursor-pointer">匯入備份 <input type="file" onchange="importData(event)" class="hidden"></label>
+            </div>
+          </div>
+        </div>
+        <div id="queryResultGroups" class="space-y-6"></div>
+      </section>
+
+      <section id="viewSite" class="hidden space-y-5">
+        <div class="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-200">
+          <h2 class="text-lg font-bold text-slate-800 mb-2"><span>🏗️</span> 案場履歷與配合廠商反查</h2>
+          <input type="text" id="siteSearchInput" oninput="renderSiteQuery()" placeholder="🔍 輸入案場名稱關鍵字..." class="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm">
+          <div id="siteBadges" class="mt-3 flex flex-wrap gap-1.5"></div>
+        </div>
+        <div id="siteResultContainer" class="space-y-4"></div>
+      </section>
+
+      <section id="viewEdit" class="hidden">
+        <div class="bg-white p-5 rounded-2xl border">
+          <div class="flex justify-between pb-4 border-b">
+            <h2 id="formTitle" class="text-xl font-bold">建立採購廠商資料</h2>
+            <button onclick="switchMainView('query')" class="text-sm text-slate-500 cursor-pointer">✕ 返回查詢列表</button>
+          </div>
+          <form id="vendorForm" onsubmit="saveVendor(event)" class="mt-4 space-y-4">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 bg-emerald-50 p-4 rounded-xl">
+              <input type="text" id="vCode" required placeholder="廠商代號" class="bg-white border rounded px-3 py-2 text-sm">
+              <input type="text" id="vName" required placeholder="廠商名稱" class="bg-white border rounded px-3 py-2 text-sm">
+              <input type="text" id="vTaxId" placeholder="統一編號" class="bg-white border rounded px-3 py-2 text-sm">
+              <input type="text" id="vCategory" placeholder="廠商類別" class="bg-white border rounded px-3 py-2 text-sm">
+            </div>
+            <textarea id="vWorkItems" class="w-full border rounded p-2 text-sm" placeholder="施工項目"></textarea>
+            <div class="flex gap-3 justify-end pt-4 border-t">
+              <button type="button" onclick="switchMainView('query')" class="px-4 py-2 border rounded text-sm">返回</button>
+              <button type="submit" class="bg-emerald-600 text-white px-6 py-2 rounded text-sm font-bold">確認儲存</button>
+            </div>
+          </form>
+        </div>
+      </section>
+    </div>
+  </main>
 
   <script>
-    // 您的雲端 API 網址
     const CLOUD_API_URL = "https://script.google.com/macros/s/AKfycbwXxXu6NHVfQntAJKJaHswCExUCRYYITArdVaNR5oer5YtdplV2l85NM6Q9_uAvJBnn/exec";
     let vendors = JSON.parse(localStorage.getItem('vendor_system_data')) || [];
 
-    // 自動同步函式 (完全相容 iOS)
-    async function syncData() {
-      document.getElementById('status').innerText = "同步中...";
+    function updateBadge(status, text) {
+      const badge = document.getElementById('syncStatusBadge');
+      if(!badge) return;
+      badge.innerHTML = `<span class="inline-block w-2 h-2 rounded-full ${status === 'online' ? 'bg-emerald-300' : 'bg-rose-300'}"></span> ${text}`;
+    }
+
+    async function fetchCloudData(isManual = false) {
+      updateBadge('syncing', '雲端同步中...');
       try {
-        // 1. 先抓取雲端資料 (GET)
-        const response = await fetch(CLOUD_API_URL + "?v=" + Date.now());
-        const data = await response.json();
-        if(data && data.length > 0) {
-            vendors = data;
+        const response = await fetch(CLOUD_API_URL + '?t=' + Date.now());
+        const text = await response.text();
+        if (text && text !== "[]") {
+          const cloudData = JSON.parse(text);
+          if (Array.isArray(cloudData) && cloudData.length > 0) {
+            vendors = cloudData;
             localStorage.setItem('vendor_system_data', JSON.stringify(vendors));
-            document.getElementById('status').innerText = "雲端同步完成";
-            render();
+            refreshCategoryOptions();
+            filterVendors();
+            updateBadge('online', '雲端已同步');
+            if (isManual) alert(`同步成功！共 ${vendors.length} 筆。`);
+            return;
+          }
         }
-      } catch (e) {
-        document.getElementById('status').innerText = "使用本機資料";
+        updateBadge('online', '雲端已同步');
+      } catch (err) {
+        updateBadge('error', '離線暫存模式');
+        if (isManual) alert('雲端連線失敗，目前顯示本機資料。');
       }
     }
 
-    // 更新雲端函式 (POST)
-    async function pushToCloud() {
-      document.getElementById('status').innerText = "上傳中...";
+    async function syncToCloud() {
       try {
         await fetch(CLOUD_API_URL, {
           method: 'POST',
-          mode: 'no-cors', // 強制放行
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify(vendors)
         });
-        document.getElementById('status').innerText = "雲端已儲存";
-      } catch (e) {
-        alert("上傳失敗，請確認網路");
+        updateBadge('online', '雲端已儲存');
+      } catch (err) {
+        updateBadge('error', '雲端儲存失敗');
       }
     }
 
-    function render() {
-      const list = document.getElementById('vendorList');
-      list.innerHTML = vendors.map(v => `<div class="bg-white p-4 rounded shadow">${v.name}</div>`).join('');
+    function refreshCategoryOptions() {
+      const activeCats = Array.from(new Set(vendors.map(v => v.category?.trim()).filter(Boolean)));
+      const select = document.getElementById('queryCategory');
+      if(!select) return;
+      select.innerHTML = '<option value="">全部類別</option>' + activeCats.map(cat => `<option value="${cat}">${cat}</option>`).join('');
     }
 
-    // 啟動
-    syncData();
-    render();
+    function filterVendors() {
+      const keyword = (document.getElementById('queryKeyword')?.value || '').toLowerCase();
+      const category = document.getElementById('queryCategory')?.value || '';
+      const status = document.getElementById('queryStatus')?.value || '';
+
+      const filtered = vendors.filter(v => {
+        const matchKeyword = !keyword || (v.name && v.name.toLowerCase().includes(keyword)) || (v.workItems && v.workItems.toLowerCase().includes(keyword));
+        const matchCategory = !category || v.category === category;
+        const matchStatus = !status || v.isActive === status;
+        return matchKeyword && matchCategory && matchStatus;
+      });
+
+      const countEl = document.getElementById('resultCount');
+      if(countEl) countEl.innerText = `共 ${filtered.length} 筆資料`;
+      
+      const container = document.getElementById('queryResultGroups');
+      if(!container) return;
+      container.innerHTML = filtered.length === 0 ? '<div class="bg-white p-12 text-center text-slate-400 rounded-2xl border">查無相符資料</div>' : '';
+
+      filtered.forEach(v => {
+        const card = document.createElement('div');
+        card.className = "bg-white p-4 rounded-xl border shadow-sm mb-3";
+        card.innerHTML = `<h4 class="font-bold text-base text-slate-800">${v.name}</h4><p class="text-xs text-slate-600 mt-1">項目：${v.workItems || '未填寫'}</p>`;
+        container.appendChild(card);
+      });
+    }
+
+    function saveVendor(e) {
+      e.preventDefault();
+      const vData = {
+        id: Date.now().toString(),
+        code: document.getElementById('vCode').value.trim(),
+        name: document.getElementById('vName').value.trim(),
+        taxId: document.getElementById('vTaxId').value.trim(),
+        category: document.getElementById('vCategory').value.trim(),
+        workItems: document.getElementById('vWorkItems').value.trim(),
+        isActive: '是'
+      };
+      vendors.unshift(vData);
+      localStorage.setItem('vendor_system_data', JSON.stringify(vendors));
+      syncToCloud();
+      filterVendors();
+      alert('儲存成功！');
+      switchMainView('query');
+    }
+
+    function exportData() {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(vendors, null, 2));
+      const a = document.createElement('a');
+      a.href = dataStr;
+      a.download = `廠商備份_${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+    }
+
+    function importData(e) {
+      const file = e.target.files[0];
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        try {
+          vendors = JSON.parse(evt.target.result);
+          localStorage.setItem('vendor_system_data', JSON.stringify(vendors));
+          syncToCloud();
+          refreshCategoryOptions();
+          filterVendors();
+          alert('匯入並同步成功！');
+        } catch(err) { alert('格式錯誤'); }
+      };
+      reader.readAsText(file);
+    }
+
+    function switchMajor(s) {}
+    function switchMainView(v) {
+      document.getElementById('viewQuery').classList.add('hidden');
+      document.getElementById('viewSite').classList.add('hidden');
+      document.getElementById('viewEdit').classList.add('hidden');
+      if(v === 'query') document.getElementById('viewQuery').classList.remove('hidden');
+      if(v === 'site') document.getElementById('viewSite').classList.remove('hidden');
+      if(v === 'edit') document.getElementById('viewEdit').classList.remove('hidden');
+    }
+    function prepareCreateNew() { switchMainView('edit'); }
+    function renderSiteQuery() {}
+
+    // 初始化
+    refreshCategoryOptions();
+    filterVendors();
+    fetchCloudData();
   </script>
 </body>
 </html>
